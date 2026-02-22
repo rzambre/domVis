@@ -1,102 +1,189 @@
-var svgWidth = $(document).width() > $(document).height() ?  $(document).height()*0.7 : $(document).width()*0.8;;
-var svgHeight = svgWidth;
-var allTrees = [];
-var leafCoordinates;
-var rootTree;
+/**
+ * init.js — D3 v7 DOM tree visualization for domVis.
+ *
+ * Renders a navigable hierarchical tree diagram from JSON returned by the backend.
+ * Supports zoom/pan via d3.zoom() and click-to-inspect via the sidebar.
+ */
 
-//Draw tree when input detected.
-$('input#url').on('keydown',function(e){ // when a key is pressed down here
-	var query = $(this).val(); // extracting the url entered in the text box
-	if(e.keyCode === 13){ // if the key pressed down is the enter key
-		d3.selectAll('svg').remove(); // clear the canvas
-		$('div#main').append('<div id="loading">Loading...</div>') 
+(function () {
+  // ── State ────────────────────────────────────────────────────────────────
+  let selectedNode = null;
 
-		$.post('/api/url',{query:query},function(data){ // what is api/url?
-			parsedDOM = $.parseHTML(data);	// this is where we are getting access to the dom.
-			rootTree = Tree(svgWidth/2, svgHeight, svgWidth/200, 'black');
-			rootTree.angle = 0;       
-			allTrees = [];
-			allTrees.push(rootTree);
-			$('div#loading').remove()
+  // ── SVG setup ────────────────────────────────────────────────────────────
+  const svg = d3.select('#tree-svg');
+  const treeGroup = svg.append('g').attr('class', 'tree-group');
+  const linksGroup = treeGroup.append('g').attr('class', 'links');
+  const nodesGroup = treeGroup.append('g').attr('class', 'nodes');
 
-			//Iterates first level of DOM nodes, calling scrape() on all of those nodes' children.
-			for (var i = 0 ; i < parsedDOM.length; i++){ // this loop is the driver loop that starts off a recursion of traversals
-				scrape(parsedDOM[i], rootTree); 
-				rootTree.isLeaf = false;
-			}
+  // ── Zoom / pan ────────────────────────────────────────────────────────────
+  const zoom = d3.zoom()
+    .scaleExtent([0.05, 8])
+    .on('zoom', function (event) {
+      treeGroup.attr('transform', event.transform);
+    });
 
-			assignLeaves(); // this is where painting starts
-			drawTree( allTrees, leafCoordinates); // also painting
-			addListeners(); // event listeners to change the color scheme of the canvas
-		});
-	}
-})
-	/**
-	 * Recursively traverses the DOM by calling itself on each child.
-	 * Also recursively creates Tree elements by holding context of newly created trees and insert()ing children.
-	 * @param  {[type]} domNode []
-	 * @param  {[type]} ctx     [most recently created object of class Tree]
-	 * @return {[type]}         [description]
-	 */
-var scrape = function(domNode,ctx){
-	allTrees.push(ctx.insert());
-	var childContext = ctx.children[ctx.children.length-1];
-	if (domNode.childNodes.length > 0){
-		childContext.isLeaf = false;
-		for (var i = 0 ; i < domNode.childNodes.length; i++){
-			scrape(domNode.childNodes[i], childContext); // recursion happening here
-		}
-	}
-}
-	/**
-	 * Assigns coordinates to end branches by checking the "isLeaf" property.
-	 * @return {[type]} [description]
-	 */
-var assignLeaves = function(){
-	leafCoordinates = [];
-	_.each(allTrees,function(tree,index){
-		if(tree.isLeaf){
-			leafCoordinates.push(tree.nextRoot())
-		}
-	})	
-}
-	/**
-	 * Draws tree in svg based on input arrays.
-	 * @param  {[type]} allTrees        [description]
-	 * @param  {[type]} leafCoordinates [description]
-	 * @return {[type]}                 [description]
-	 */
-var drawTree = function(allTrees, leafCoordinates){
-	//Uses function in data to save a color object.
-	var color = getRandomColor();
-	$('input#size').val(svgWidth)
+  svg.call(zoom);
 
-	//Adding svg canvas.
-	var svg = d3.select('div#main').append('svg')
-							.attr('class','tree')
-							.attr('width',svgWidth)
-							.attr('height',svgHeight)
-							.style('background',color.bgColor);
-	//Drawing branches.
-	svg.selectAll('rect').data(allTrees)
-		.enter().append('rect')
-			.attr('x',svgWidth/2)
-			.attr('y',svgHeight)
-			.attr('height',0)
-		.transition().duration(5000)
-			.attr('x',function(d){return d.root.x - d.width/2})
-			.attr('y',function(d){return d.root.y-d.height})
-			.attr('height',function(d){return d.height})
-			.attr('width',function(d){return d.width})
-			.attr('fill', function(d){return d.color})
-			.attr('transform',function(d){return 'rotate(' + d.angle + ' ' + d.root.x + ' ' + d.root.y + ')'});
-	//Drawing leaves.
-	svg.selectAll('circle').data(leafCoordinates)
-		.enter().append('circle')
-		.attr('r',0)
-	.transition().duration(5000).delay(5000)
-		.attr('cx',function(d){return d.x})
-		.attr('cy',function(d){return d.y})
-		.attr('r',function(d){return findRandom(svgWidth/200,svgWidth/1000);})
-		.attr('fill',color.leafColor);	
-}
+  // Deselect node when clicking on empty SVG background
+  svg.on('click', function (event) {
+    if (event.target === svg.node() || event.target === treeGroup.node()) {
+      deselectNode();
+    }
+  });
+
+  // ── Color scale ───────────────────────────────────────────────────────────
+  const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+  // ── UI wiring ─────────────────────────────────────────────────────────────
+  const urlInput = document.getElementById('url-input');
+  const btn = document.getElementById('visualize-btn');
+
+  btn.addEventListener('click', startVisualization);
+  urlInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') startVisualization();
+  });
+
+  // ── Main flow ─────────────────────────────────────────────────────────────
+  async function startVisualization() {
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    setStatus('loading');
+    btn.disabled = true;
+    deselectNode();
+
+    // Reset metrics panel
+    document.getElementById('metrics-content').innerHTML =
+      '<span class="placeholder-text">Loading…</span>';
+
+    try {
+      const { tree, metrics } = await fetchTree(url);
+      renderTree(tree);
+      renderMetrics(metrics);
+      setStatus('hidden');
+    } catch (err) {
+      setStatus('error', err.message);
+      document.getElementById('metrics-content').innerHTML =
+        '<span class="placeholder-text">No tree loaded yet.</span>';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── Status overlay ────────────────────────────────────────────────────────
+  function setStatus(state, message) {
+    const overlay = document.getElementById('status-overlay');
+    overlay.classList.remove('hidden');
+
+    if (state === 'hidden') {
+      overlay.classList.add('hidden');
+      return;
+    }
+
+    if (state === 'loading') {
+      overlay.innerHTML = '<div class="spinner"></div><span>Fetching and parsing…</span>';
+    } else if (state === 'error') {
+      overlay.innerHTML = `<span class="error-icon">⚠</span><span>${escapeHtml(message)}</span>`;
+    }
+  }
+
+  // ── Tree rendering ────────────────────────────────────────────────────────
+  function renderTree(treeData) {
+    // Clear previous render
+    linksGroup.selectAll('*').remove();
+    nodesGroup.selectAll('*').remove();
+
+    // Build D3 hierarchy
+    const root = d3.hierarchy(treeData, function (d) {
+      return d.children && d.children.length ? d.children : null;
+    });
+
+    // Fixed-size layout so nodes don't overlap for wide trees
+    const layout = d3.tree().nodeSize([28, 60]);
+    layout(root);
+
+    // ── Links ──
+    const linkGenerator = d3.linkVertical()
+      .x(function (d) { return d.x; })
+      .y(function (d) { return d.y; });
+
+    linksGroup.selectAll('path.link')
+      .data(root.links())
+      .join('path')
+        .attr('class', 'link')
+        .attr('d', linkGenerator);
+
+    // ── Nodes ──
+    const node = nodesGroup.selectAll('g.node')
+      .data(root.descendants())
+      .join('g')
+        .attr('class', 'node')
+        .attr('transform', function (d) { return `translate(${d.x},${d.y})`; })
+        .on('click', onNodeClick);
+
+    node.append('circle')
+      .attr('r', function (d) { return d.children ? 6 : 4; })
+      .attr('fill', function (d) { return color(String(d.depth % 10)); })
+      .attr('stroke', function (d) { return color(String(d.depth % 10)); });
+
+    node.append('text')
+      .attr('dy', function (d) { return d.children ? -10 : 13; })
+      .attr('text-anchor', 'middle')
+      .text(function (d) { return d.data.name; });
+
+    // Center the tree in the viewport
+    centerTree(root);
+  }
+
+  // ── Fit tree to viewport ──────────────────────────────────────────────────
+  function centerTree(root) {
+    const canvas = document.getElementById('canvas');
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+
+    // Find bounding box of all node positions
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    root.each(function (d) {
+      if (d.x < minX) minX = d.x;
+      if (d.x > maxX) maxX = d.x;
+      if (d.y < minY) minY = d.y;
+      if (d.y > maxY) maxY = d.y;
+    });
+
+    const treeW = maxX - minX + 60;
+    const treeH = maxY - minY + 60;
+    const scale = Math.min(W / treeW, H / treeH, 1);
+    const tx = W / 2 - scale * (minX + maxX) / 2;
+    const ty = 40 * scale - scale * minY;
+
+    svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  }
+
+  // ── Node click handler ────────────────────────────────────────────────────
+  function onNodeClick(event, d) {
+    event.stopPropagation();
+
+    if (selectedNode) {
+      selectedNode.classed('selected', false);
+    }
+
+    const nodeEl = d3.select(this);
+    if (selectedNode && selectedNode.datum() === d) {
+      // Toggle off
+      selectedNode = null;
+      clearNodeInfo();
+    } else {
+      nodeEl.classed('selected', true);
+      selectedNode = nodeEl;
+      renderNodeInfo(d.data);
+    }
+  }
+
+  function deselectNode() {
+    if (selectedNode) {
+      selectedNode.classed('selected', false);
+      selectedNode = null;
+    }
+    clearNodeInfo();
+  }
+})();

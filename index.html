@@ -1,25 +1,70 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>domVis</title>
-    <link rel="stylesheet" type="text/css" href="style/style.css" />
-    <link href='http://fonts.googleapis.com/css?family=Flavors' rel='stylesheet' type='text/css'>
-    <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
-    <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.7.0/underscore-min.js"></script>
-    <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.5.1/d3.min.js"></script>
-  </head>
-  <body>
-  	<h1>domVis</h1>
-    <input id='url' value='https://www.'></input><br>
-    <div id='main'></div>
-    <footer>
-      Check us out at:<br>
-      <a href='https://https://github.com/rzambre/domVis' target='_blank'>GitHub</a>
-      <a href='https://https://www.linkedin.com/in/zoish-pithawala-b31b13113' target='_blank'>Zoish Pithawala</a>
-      <a href='https://www.rohitzambre.com' target='_blank'>Rohit Zambre</a>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>domVis</title>
+  <link rel="stylesheet" href="style/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+</head>
+<body>
 
-    </footer>
-  </body>
+  <!-- ── Header ── -->
+  <header id="app-header">
+    <span class="logo">domVis</span>
+    <input
+      id="url-input"
+      type="text"
+      placeholder="https://example.com"
+      value="https://example.com"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button id="visualize-btn">Visualize</button>
+  </header>
+
+  <!-- ── Main body ── -->
+  <div id="app-body">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+
+      <div class="sidebar-section" id="metrics-section">
+        <div class="sidebar-section-title">Tree Metrics</div>
+        <div class="sidebar-section-body" id="metrics-content">
+          <span class="placeholder-text">No tree loaded yet.</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section" id="node-section">
+        <div class="sidebar-section-title">Node Info</div>
+        <div class="sidebar-section-body" id="node-content">
+          <span class="placeholder-text">Click a node to inspect it.</span>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Canvas -->
+    <main id="canvas">
+      <div id="status-overlay">
+        <div class="placeholder-text">Enter a URL above and click Visualize.</div>
+      </div>
+      <svg id="tree-svg"></svg>
+    </main>
+
+  </div>
+
+  <!-- ── Footer ── -->
+  <footer id="app-footer">
+    <div class="footer-links">
+      <a href="https://github.com/rzambre/domVis" target="_blank">GitHub</a>
+      <a href="https://www.rohitzambre.com" target="_blank">Rohit Zambre</a>
+    </div>
+    <span>DOM Tree Visualizer</span>
+  </footer>
+
   <script src="script/data.js"></script>
   <script src="script/init.js"></script>
+</body>
 </html>

@@ -1,13 +1,12 @@
 {
-  "name": "Treeify",
+  "name": "domVis",
   "description": "Visualizing DOM Tree using D3",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "node": "*",
     "express": "*",
-    "request": "*",
-    "path": "*",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0",
     "body-parser": "*"
   }
 }
